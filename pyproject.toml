@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "otop"
-version = "0.1.0"
+version = "1.0.0"
 description = "htop, but for opencode"
 authors = ["Peter Ward"]
 license = "MIT"

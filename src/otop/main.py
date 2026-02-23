@@ -226,8 +226,16 @@ from typing import Optional
 
 # -- paths --
 
-DB_PATH = Path.home() / ".local" / "share" / "opencode" / "opencode.db"
-CONFIG_PATH = Path.home() / ".config" / "opencode" / "opencode.json"
+DB_PATH = (
+    Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+    / "opencode"
+    / "opencode.db"
+)
+CONFIG_PATH = (
+    Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    / "opencode"
+    / "opencode.json"
+)
 REFRESH_INTERVAL = 2.0
 
 
