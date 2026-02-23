@@ -65,13 +65,20 @@ reads from opencode's sqlite db read-only (WAL mode, safe to query while session
 
 # tasks
 
-## opencode sessions
+## my opencode sessions, for convenience
 
 `ses_376f0394bffeMw00t9awVuAbEp` - publishing and latest changes
 
 ## todo
 
 - [ ] record a `vhs` demo gif — scroll through sessions, enter detail view, filter, back out. embed in README above the install section
+- [ ] Linux support
+  - [ ] replace `lsof` cwd resolution with `/proc/<pid>/cwd` symlink readlink
+  - [ ] replace `lsof` log file discovery with `/proc/<pid>/fd/` enumeration
+  - [ ] handle linux TTY format (`pts/3` vs macOS `ttys005`) in tmux pane mapping
+  - [ ] replace `pbcopy` with `xclip -selection clipboard` / `xsel` / `wl-copy` (detect what's available)
+  - [ ] fix `pthread_setname_np` call signature (linux takes two args: thread + name)
+  - [ ] test `ps axo pid,pcpu,rss,tty,etime,args` output format on debian — may need minor parsing tweaks
 
 ## ongoing
 
