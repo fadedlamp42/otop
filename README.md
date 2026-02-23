@@ -62,3 +62,25 @@ status is inferred from the db's `finish` field on assistant messages, cross-ref
 macOS only right now — i use this daily on mac and that's where it's tested. the process discovery layer (`lsof`, `ps` output parsing, cwd resolution) is all macOS-flavored. a debian/linux-compatible version is on the horizon, mostly just needs `/proc/<pid>/cwd` and `/proc/<pid>/fd/` instead of `lsof` :]
 
 reads from opencode's sqlite db read-only (WAL mode, safe to query while sessions are active). respects `$XDG_DATA_HOME` and `$XDG_CONFIG_HOME` if set.
+
+# tasks
+
+## opencode sessions
+
+`ses_376f0394bffeMw00t9awVuAbEp` - publishing and latest changes
+
+## todo
+
+- [ ] record a `vhs` demo gif — scroll through sessions, enter detail view, filter, back out. embed in README above the install section
+
+## ongoing
+
+### active
+
+### passive
+
+### waiting
+
+## done
+
+## cancelled
