@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "otop"
+version = "0.1.0"
+description = "htop, but for opencode"
+authors = ["Peter Ward"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "otop", from = "src"}]
+
+[tool.poetry.scripts]
+otop = "otop.main:cli"
+
+[tool.poetry.dependencies]
+python = ">=3.10"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
