@@ -2,7 +2,11 @@
 
 `htop`, but for [opencode](https://github.com/sst/opencode). curses TUI that shows all your running sessions at a glance — status, tokens, uptime, what the model last said, etc.
 
+## purpose
+
 built because i run like 5-10 opencode sessions simultaneously and needed a way to see what's happening without switching through all of them :>
+
+_especially_ nice when you have a second monitor connected, so you can just leave this on there and turn your head for a quick check of all your sessions/where you're "needed" as a "pull" signal rather than the overwhelming "push" approach of hooking up TTS/sounds/visual bouncing for agents which are waiting (which doesn't scale well past human working memory)
 
 ## install
 
