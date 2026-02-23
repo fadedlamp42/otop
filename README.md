@@ -72,13 +72,14 @@ reads from opencode's sqlite db read-only (WAL mode, safe to query while session
 ## todo
 
 - [ ] record a `vhs` demo gif — scroll through sessions, enter detail view, filter, back out. embed in README above the install section
-- [ ] Linux support
+- [ ] _stable_ Linux support (it kinda just works already lol)
   - [ ] replace `lsof` cwd resolution with `/proc/<pid>/cwd` symlink readlink
   - [ ] replace `lsof` log file discovery with `/proc/<pid>/fd/` enumeration
   - [ ] handle linux TTY format (`pts/3` vs macOS `ttys005`) in tmux pane mapping
   - [ ] replace `pbcopy` with `xclip -selection clipboard` / `xsel` / `wl-copy` (detect what's available)
   - [ ] fix `pthread_setname_np` call signature (linux takes two args: thread + name)
   - [ ] test `ps axo pid,pcpu,rss,tty,etime,args` output format on debian — may need minor parsing tweaks
+- [ ] remote `opencode` server support (probably in combination with local ones, special rendering/separate section like `k9s` namespace to delineate)
 
 ## ongoing
 
