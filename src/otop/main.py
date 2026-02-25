@@ -685,6 +685,49 @@ def find_session_for_process(proc, claimed_session_ids=None):
     return None
 
 
+def correlate_all_sessions():
+    """run the full two-pass PID-to-session correlation algorithm.
+
+    extracts the core logic from OpenCodeTop.refresh_data() so it can be
+    used by both the TUI and CLI subcommands.
+
+    returns (processes, correlated) where:
+      processes: list of ProcessInfo from the OS
+      correlated: list of (ProcessInfo, SessionInfo|None) with resolved mappings
+    """
+    processes = get_opencode_processes()
+
+    claimed = set()
+    resolved = {}
+
+    # pass 1: explicit session IDs from cmdline -s flag (skip tool processes)
+    for proc in processes:
+        if proc.session_id and not proc.is_tool_process:
+            claimed.add(proc.session_id)
+            resolved[proc.pid] = proc.session_id
+
+    # pass 2: inferred matches, oldest process first (skip tool processes —
+    # they'd steal session matches from real interactive processes)
+    remaining = [
+        p for p in processes if p.pid not in resolved and not p.is_tool_process
+    ]
+    remaining.sort(key=lambda p: p.start_time_ms)
+    for proc in remaining:
+        sid = find_session_for_process(proc, claimed_session_ids=claimed)
+        if sid:
+            claimed.add(sid)
+            resolved[proc.pid] = sid
+
+    # build final (proc, session_info) pairs preserving original order
+    correlated = []
+    for proc in processes:
+        sid = resolved.get(proc.pid)
+        info = get_session_info(sid) if sid else None
+        correlated.append((proc, info))
+
+    return processes, correlated
+
+
 def get_global_stats():
     """aggregate stats across all sessions (all time)."""
     rows = query_db("""
@@ -1235,45 +1278,14 @@ class OpenCodeTop:
     def refresh_data(self):
         """collect all data and resolve PID-to-session mappings.
 
-        two-pass claimed-set algorithm for disambiguation:
-          pass 1: processes with explicit -s flags claim their sessions.
-          pass 2: remaining processes sorted by start_time ascending. each
-                  claims the best unclaimed session via find_session_for_process.
-                  sorting by start time ensures the older process (more message
-                  history) gets first pick, and newer processes get the leftovers.
+        delegates the two-pass correlation algorithm to correlate_all_sessions()
+        (shared with the CLI subcommands). see that function's docstring for
+        the disambiguation strategy.
         """
-        self.processes = get_opencode_processes()
+        self.processes, self.sessions = correlate_all_sessions()
         self.today_stats = get_today_stats()
         self.global_stats = get_global_stats()
         self.mcp_config = get_mcp_config()
-
-        claimed = set()
-        resolved = {}
-
-        # pass 1: explicit session IDs from cmdline -s flag (skip tool processes)
-        for proc in self.processes:
-            if proc.session_id and not proc.is_tool_process:
-                claimed.add(proc.session_id)
-                resolved[proc.pid] = proc.session_id
-
-        # pass 2: inferred matches, oldest process first (skip tool processes —
-        # they'd steal session matches from real interactive processes)
-        remaining = [
-            p for p in self.processes if p.pid not in resolved and not p.is_tool_process
-        ]
-        remaining.sort(key=lambda p: p.start_time_ms)
-        for proc in remaining:
-            sid = find_session_for_process(proc, claimed_session_ids=claimed)
-            if sid:
-                claimed.add(sid)
-                resolved[proc.pid] = sid
-
-        # build final (proc, session_info) pairs preserving original order
-        self.sessions = []
-        for proc in self.processes:
-            sid = resolved.get(proc.pid)
-            info = get_session_info(sid) if sid else None
-            self.sessions.append((proc, info))
 
         self.last_refresh = time.time()
 
@@ -2148,8 +2160,101 @@ def _signal_exit(signum, _frame):
     raise SystemExit(128 + signum)
 
 
+def sessions_command(include_all=False, include_noninteractive=False):
+    """output all running opencode sessions as JSON.
+
+    used by external tools (like tmux naming scripts) to get rich session
+    context without parsing otop's curses TUI. each entry includes process
+    info, correlated session data, and tmux pane target.
+    """
+    _processes, correlated = correlate_all_sessions()
+
+    results = []
+    for proc, session in correlated:
+        # default: skip tool processes and unmatched
+        if not include_all and (proc.is_tool_process or session is None):
+            continue
+        # default: skip non-interactive (commit-msg, subagents)
+        if (
+            not include_noninteractive
+            and session is not None
+            and not session.interactive
+        ):
+            continue
+
+        tmux_pane = _tmux_pane_for_tty(proc.tty)
+
+        entry = {
+            "pid": proc.pid,
+            "tty": proc.tty,
+            "cwd": proc.cwd,
+            "cpu_percent": proc.cpu_percent,
+            "mem_mb": round(proc.mem_mb, 1),
+            "is_tool_process": proc.is_tool_process,
+            "tmux_pane": tmux_pane,
+        }
+
+        if session:
+            entry["session"] = {
+                "id": session.session_id,
+                "title": session.title,
+                "directory": session.directory,
+                "model": session.model,
+                "status": infer_status(session, cpu_percent=proc.cpu_percent),
+                "message_count": session.message_count,
+                "interactive": session.interactive,
+            }
+
+        results.append(entry)
+
+    print(json.dumps(results, indent=2))
+
+
 def cli():
-    """entry point for the `otop` console script (via pyproject.toml)."""
+    """entry point for the `otop` console script (via pyproject.toml).
+
+    subcommands:
+      (none)    — launch the curses TUI (default)
+      sessions  — output running sessions as JSON for external tools
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="opencode session monitor",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    subparsers = parser.add_subparsers(dest="command")
+
+    # `otop sessions` — JSON output for scripting
+    sessions_parser = subparsers.add_parser(
+        "sessions",
+        help="list running opencode sessions as JSON",
+    )
+    sessions_parser.add_argument(
+        "--all",
+        "-a",
+        action="store_true",
+        help="include tool processes and unmatched sessions",
+    )
+    sessions_parser.add_argument(
+        "--include-noninteractive",
+        action="store_true",
+        help="include non-interactive sessions (commit-msg, subagents)",
+    )
+
+    args = parser.parse_args()
+
+    if args.command == "sessions":
+        if not DB_PATH.exists():
+            print(json.dumps({"error": "db not found", "path": str(DB_PATH)}))
+            raise SystemExit(1)
+        sessions_command(
+            include_all=args.all,
+            include_noninteractive=args.include_noninteractive,
+        )
+        return
+
+    # default: launch TUI
     if not DB_PATH.exists():
         print("error: opencode db not found at %(path)s" % {"path": DB_PATH})
         raise SystemExit(1)
