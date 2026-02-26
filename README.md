@@ -1,6 +1,6 @@
 # otop
 
-`htop`, but for [opencode](https://github.com/sst/opencode). curses TUI that shows all your running sessions at a glance — status, tokens, uptime, what the model last said, etc.
+`htop`, but for [opencode](https://github.com/sst/opencode). bubbletea TUI that shows all your running sessions at a glance — status, tokens, uptime, what the model last said, etc.
 
 ## purpose
 
@@ -11,16 +11,16 @@ _especially_ nice when you have a second monitor connected, so you can just leav
 ## install
 
 ```
-pipx install otop
+go install github.com/fadedlamp42/otop@latest
 ```
 
 or from source:
 ```
 git clone https://github.com/fadedlamp42/otop
-cd otop && pipx install .
+cd otop && go build -o otop .
 ```
 
-no dependencies beyond python stdlib.
+requires Go 1.23+ (uses `modernc.org/sqlite` for pure-Go sqlite, no CGo needed).
 
 ## usage
 
@@ -63,7 +63,7 @@ status is inferred from the db's `finish` field on assistant messages, cross-ref
 
 ## platform
 
-macOS only right now — i use this daily on mac and that's where it's tested. the process discovery layer (`lsof`, `ps` output parsing, cwd resolution) is all macOS-flavored. a debian/linux-compatible version is on the horizon, mostly just needs `/proc/<pid>/cwd` and `/proc/<pid>/fd/` instead of `lsof` :]
+macOS only right now — i use this daily on mac and that's where it's tested. the process discovery layer (`lsof`, `ps` output parsing, cwd resolution) is all macOS-flavored. linux support is on the horizon, mostly just needs `/proc/<pid>/cwd` and `/proc/<pid>/fd/` instead of `lsof` :]
 
 reads from opencode's sqlite db read-only (WAL mode, safe to query while sessions are active). respects `$XDG_DATA_HOME` and `$XDG_CONFIG_HOME` if set.
 
@@ -72,6 +72,7 @@ reads from opencode's sqlite db read-only (WAL mode, safe to query while session
 ## my opencode sessions, for convenience
 
 `ses_376f0394bffeMw00t9awVuAbEp` - publishing and latest changes
+`ses_367b7fb8cffeLWmyGNDY3ltaVi` - `go` rewrite
 
 ## todo
 
