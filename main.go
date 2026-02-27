@@ -28,6 +28,21 @@ func main() {
 		return
 	}
 
+	// `otop serve` subcommand — HTTP JSON server for Rose companion app
+	if len(os.Args) > 1 && os.Args[1] == "serve" {
+		fs := flag.NewFlagSet("serve", flag.ExitOnError)
+		port := fs.Int("port", 8384, "port to listen on")
+		fs.IntVar(port, "p", 8384, "port to listen on")
+		_ = fs.Parse(os.Args[2:])
+
+		if _, err := os.Stat(dbPath()); os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "error: db not found at %s\n", dbPath())
+			os.Exit(1)
+		}
+		serveCommand(*port)
+		return
+	}
+
 	// default: launch TUI
 	if _, err := os.Stat(dbPath()); os.IsNotExist(err) {
 		fmt.Fprintf(os.Stderr, "error: opencode db not found at %s\n", dbPath())
