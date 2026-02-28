@@ -68,10 +68,23 @@ func truncOrPad(s string, width int) string {
 	return s
 }
 
+// toASCII replaces non-ASCII bytes with '?' so that byte-level slicing
+// in tickerSlice and truncOrPad doesn't break column alignment.
+func toASCII(s string) string {
+	b := []byte(s)
+	for i := 0; i < len(b); i++ {
+		if b[i] > 127 {
+			b[i] = '?'
+		}
+	}
+	return string(b)
+}
+
 // tickerSlice returns a scrolling window into text, subway-sign style.
 // if text fits within width, returned as-is (padded). otherwise the
 // visible window shifts by one character every rateMS milliseconds.
 func tickerSlice(text string, width, rateMS int) string {
+	text = toASCII(text)
 	if len(text) <= width {
 		return truncOrPad(text, width)
 	}
@@ -145,6 +158,10 @@ func columnValue(key string, cs correlatedSession) string {
 		return shortModel(cs.session.model)
 	case "tty":
 		return cs.process.tty
+	case "tmux":
+		return cs.process.tmuxSession
+	case "tmuxWin":
+		return cs.process.tmuxWindow
 	}
 	return ""
 }
@@ -288,6 +305,10 @@ func compareSessions(key string, a, b correlatedSession) int {
 		result = cmp.Compare(a.session.model, b.session.model)
 	case "tty":
 		result = cmp.Compare(a.process.tty, b.process.tty)
+	case "tmux":
+		result = cmp.Compare(a.process.tmuxSession, b.process.tmuxSession)
+	case "tmuxWin":
+		result = cmp.Compare(a.process.tmuxWindow, b.process.tmuxWindow)
 	}
 
 	// secondary sort by title for stability

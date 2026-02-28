@@ -53,28 +53,6 @@ func statusStyleFor(status string) lipgloss.Style {
 	}
 }
 
-// stalenessStyleFor returns a staleness-gradient style based on last message age.
-// mirrors stop's approach: green (<1m) → yellow (<5m) → orange (<15m) → dark orange (<1h) → red (1h+).
-func stalenessStyleFor(lastMessageTimeMS int64) lipgloss.Style {
-	if lastMessageTimeMS <= 0 {
-		return staleStyle
-	}
-	age := time.Duration(time.Now().UnixMilli()-lastMessageTimeMS) * time.Millisecond
-	if age < time.Minute {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	}
-	if age < 5*time.Minute {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	}
-	if age < 15*time.Minute {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("208"))
-	}
-	if age < time.Hour {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("202"))
-	}
-	return lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-}
-
 // titleWidth computes the flexible TITLE/LAST column width.
 func (m model) titleWidth() int {
 	fixed := colGap + colStatus + colGap + colSID + colGap + colUp +
@@ -99,17 +77,21 @@ func (m model) renderListView() string {
 		b.WriteString(m.renderStatsBar())
 		b.WriteString("\n")
 	}
+	visible := m.getVisibleSessions()
+
+	// resolve column widths from actual content (shrink-wrap)
+	cols := resolvedOneLineColumns(visible)
+	flexWidth := m.oneLineFlexWidth(cols)
+
 	if display.showColumnHeaders {
 		if display.oneLine {
-			b.WriteString(m.renderOneLineHeaders())
+			b.WriteString(m.renderOneLineHeaders(cols, flexWidth))
 		} else {
 			b.WriteString(m.renderColumnHeaders())
 		}
 		b.WriteString(dimStyle.Render(strings.Repeat("\u2500", m.width)))
 		b.WriteString("\n")
 	}
-
-	visible := m.getVisibleSessions()
 
 	overhead := m.listOverhead()
 	linesPerSession := 3
@@ -123,7 +105,7 @@ func (m model) renderListView() string {
 		isSelected := m.selectMode && i == m.cursor
 		cs := visible[i]
 		if display.oneLine {
-			b.WriteString(m.renderSessionOneLine(cs, isSelected))
+			b.WriteString(m.renderSessionOneLine(cs, isSelected, cols, flexWidth))
 			b.WriteString("\n")
 		} else {
 			b.WriteString(m.renderSessionRow1(cs, isSelected))
@@ -293,13 +275,7 @@ func (m model) renderSessionRow1(cs correlatedSession, selected bool) string {
 	if selected {
 		return selectStyle.Width(m.width).MaxWidth(m.width).Render(text)
 	}
-	var style lipgloss.Style
-	if m.opinionatedColor {
-		style = stalenessStyleFor(cs.session.lastMessageTime)
-	} else {
-		style = statusStyleFor(status)
-	}
-	return style.Width(m.width).MaxWidth(m.width).Render(text)
+	return statusStyleFor(status).Width(m.width).MaxWidth(m.width).Render(text)
 }
 
 func (m model) renderSessionRow2(cs correlatedSession, selected bool) string {
@@ -387,13 +363,32 @@ func (m model) oneLineFlexWidth(cols []oneLineColSpec) int {
 	return max(5, (m.width-fixed)/flexCount)
 }
 
-func (m model) renderOneLineHeaders() string {
+// resolvedOneLineColumns computes column widths by shrink-wrapping fixed
+// columns to the max of their label width and actual content width.
+// flexible columns (width=0) are left at 0 for oneLineFlexWidth to handle.
+func resolvedOneLineColumns(visible []correlatedSession) []oneLineColSpec {
 	cols := enabledOneLineColumns()
+	for i, c := range cols {
+		if c.width == 0 {
+			continue // flexible columns stay flexible
+		}
+		maxW := len(c.label)
+		for _, cs := range visible {
+			val := columnValue(c.key, cs)
+			if len(val) > maxW {
+				maxW = len(val)
+			}
+		}
+		cols[i].width = maxW
+	}
+	return cols
+}
+
+func (m model) renderOneLineHeaders(cols []oneLineColSpec, flexWidth int) string {
 	if len(cols) == 0 {
 		return ""
 	}
 	activeKey := columns[m.sortColIdx].key
-	flexWidth := m.oneLineFlexWidth(cols)
 
 	var parts []string
 	for _, c := range cols {
@@ -411,12 +406,10 @@ func (m model) renderOneLineHeaders() string {
 	return "  " + strings.Join(parts, "  ") + "\n"
 }
 
-func (m model) renderSessionOneLine(cs correlatedSession, selected bool) string {
-	cols := enabledOneLineColumns()
+func (m model) renderSessionOneLine(cs correlatedSession, selected bool, cols []oneLineColSpec, flexWidth int) string {
 	if len(cols) == 0 {
 		return ""
 	}
-	flexWidth := m.oneLineFlexWidth(cols)
 
 	var parts []string
 	for _, c := range cols {
@@ -440,13 +433,8 @@ func (m model) renderSessionOneLine(cs correlatedSession, selected bool) string 
 	if cs.session == nil {
 		return dimStyle.Width(m.width).MaxWidth(m.width).Render(text)
 	}
-	var style lipgloss.Style
-	if m.opinionatedColor {
-		style = stalenessStyleFor(cs.session.lastMessageTime)
-	} else {
-		style = statusStyleFor(inferStatus(cs.session, cs.process.cpuPercent))
-	}
-	return style.Width(m.width).MaxWidth(m.width).Render(text)
+	status := inferStatus(cs.session, cs.process.cpuPercent)
+	return statusStyleFor(status).Width(m.width).MaxWidth(m.width).Render(text)
 }
 
 // -- detail line (cwd of selected) --
@@ -580,7 +568,6 @@ func (m model) renderFooter() string {
 		{"p", "procs"},
 		{"t", "todos"},
 		{"m", "mcps"},
-		{"c", "colors"},
 		{"j/k", "select"},
 	}
 

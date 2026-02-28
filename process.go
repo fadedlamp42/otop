@@ -19,6 +19,42 @@ import (
 
 var sessionIDRe = regexp.MustCompile(`(?:^|\s)-s\s+(ses_\S+)`)
 
+type tmuxPaneInfo struct {
+	session string
+	window  string
+}
+
+// batchTmuxSessions maps TTY names (e.g. "ttys005") to tmux session and
+// window names via a single tmux list-panes call.
+func batchTmuxSessions() map[string]tmuxPaneInfo {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, "tmux", "list-panes", "-a", "-F",
+		"#{pane_tty} #{session_name} #{window_name}").Output()
+	if err != nil {
+		return nil
+	}
+
+	result := make(map[string]tmuxPaneInfo)
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		parts := strings.SplitN(line, " ", 3)
+		if len(parts) < 2 {
+			continue
+		}
+		tty := parts[0]
+		if strings.HasPrefix(tty, "/dev/") {
+			tty = tty[5:]
+		}
+		info := tmuxPaneInfo{session: parts[1]}
+		if len(parts) == 3 {
+			info.window = parts[2]
+		}
+		result[tty] = info
+	}
+	return result
+}
+
 // parseLogTimestamp extracts epoch ms from an opencode log filename.
 // log filenames are UTC timestamps: 2026-02-20T145658.log
 // IMPORTANT: must be parsed as UTC, not local time.
@@ -190,6 +226,15 @@ func getOpencodeProcesses() []processInfo {
 			startTimeMS:   startMS,
 			isToolProcess: isTool,
 		})
+	}
+
+	// batch tmux session lookup
+	tmuxSessions := batchTmuxSessions()
+	for i := range processes {
+		if info, ok := tmuxSessions[processes[i].tty]; ok {
+			processes[i].tmuxSession = info.session
+			processes[i].tmuxWindow = info.window
+		}
 	}
 
 	return processes

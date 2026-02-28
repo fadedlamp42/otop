@@ -69,9 +69,6 @@ type model struct {
 	// select mode: cursor visible, nav/enter/yank work
 	selectMode bool
 
-	// coloring mode (toggled with 'c', default from config)
-	opinionatedColor bool
-
 	// flash message (e.g. after yank)
 	flashMsg  string
 	flashTime time.Time
@@ -88,9 +85,8 @@ func newModel() model {
 		}
 	}
 	return model{
-		opinionatedColor: display.opinionatedColor,
-		sortColIdx:       sortIdx,
-		sortReverse:      display.defaultSortReverse,
+		sortColIdx:  sortIdx,
+		sortReverse: display.defaultSortReverse,
 	}
 }
 
@@ -199,8 +195,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.sortColIdx = (m.sortColIdx - 1 + len(columns)) % len(columns)
 	case "s":
 		m.sortReverse = !m.sortReverse
-	case "c":
-		m.opinionatedColor = !m.opinionatedColor
+
 	case "/":
 		m.filterActive = true
 		m.filterText = ""

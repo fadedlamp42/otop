@@ -83,6 +83,8 @@ var columns = []columnDef{
 	{"tokens", "CTX/OUT"},
 	{"model", "MODEL"},
 	{"tty", "TTY"},
+	{"tmux", "TMUX"},
+	{"tmuxWin", "WINDOW"},
 }
 
 // grid column widths (content, not including gap)
@@ -106,7 +108,6 @@ type displayConfig struct {
 	showAggregateStats bool
 	showColumnHeaders  bool
 	oneLine            bool
-	opinionatedColor   bool   // staleness-based coloring (stop-style) vs status-based
 	defaultSortKey     string // column key to sort by on startup (e.g. "round", "status")
 	defaultSortReverse bool   // true = descending, false = ascending
 	columns            columnConfig
@@ -115,20 +116,22 @@ type displayConfig struct {
 
 // columnConfig toggles individual columns in one-line mode.
 type columnConfig struct {
-	title  bool
-	last   bool
-	status bool
-	msgs   bool
-	sid    bool
-	pid    bool
-	uptime bool
-	round  bool
-	cpu    bool
-	mem    bool
-	ctx    bool
-	out    bool
-	model  bool
-	tty    bool
+	title   bool
+	last    bool
+	status  bool
+	msgs    bool
+	sid     bool
+	pid     bool
+	uptime  bool
+	round   bool
+	cpu     bool
+	mem     bool
+	ctx     bool
+	out     bool
+	model   bool
+	tty     bool
+	tmux    bool
+	tmuxWin bool
 }
 
 // tickerConfig controls the subway-style scrolling ticker for the "last" column.
@@ -141,24 +144,21 @@ type tickerConfig struct {
 
 // display is the active layout configuration.
 // edit these fields to customize the layout.
-// opinionatedColor: false = status-based coloring (green/yellow/white/dim/red),
-//
-//	true  = staleness-based coloring a la stop (green→yellow→orange→red by age).
-//	toggle at runtime with 'c' key.
 var display = displayConfig{
 	showHeader:         false,
 	showAggregateStats: false,
 	showColumnHeaders:  false,
 	oneLine:            true,
-	opinionatedColor:   true,
 	defaultSortKey:     "round",
 	defaultSortReverse: false, // ascending: fresh rounds at top
 	columns: columnConfig{
-		title:  true,
-		last:   true,
-		status: true,
-		round:  true,
-		model:  true,
+		title:   true,
+		last:    true,
+		status:  true,
+		round:   true,
+		model:   true,
+		tmux:    true,
+		tmuxWin: true,
 	},
 	ticker: tickerConfig{
 		width:  0, // 0 = flexible, fills remaining space. >0 = fixed character count.
@@ -211,6 +211,10 @@ func (c columnConfig) isEnabled(key string) bool {
 		return c.model
 	case "tty":
 		return c.tty
+	case "tmux":
+		return c.tmux
+	case "tmuxWin":
+		return c.tmuxWin
 	}
 	return false
 }
@@ -224,11 +228,13 @@ type oneLineColSpec struct {
 
 // oneLineColumnOrder defines display order and base widths for one-line mode.
 var oneLineColumnOrder = []oneLineColSpec{
+	{"tmux", "TMUX", 12},
+	{"tmuxWin", "WINDOW", 12},
+	{"sid", "SID", 30},
 	{"title", "TITLE", 0},
 	{"last", "LAST", 0},
 	{"status", "STATUS", 10},
 	{"msgs", "MSGS", 5},
-	{"sid", "SID", 30},
 	{"pid", "PID", 8},
 	{"uptime", "UP", 8},
 	{"round", "ROUND", 8},

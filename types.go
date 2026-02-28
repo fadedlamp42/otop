@@ -13,6 +13,8 @@ type processInfo struct {
 	memMB         float64
 	elapsed       string
 	tty           string
+	tmuxSession   string // tmux session name this process is running in
+	tmuxWindow    string // tmux window name
 	cwd           string
 	cmdline       string
 	sessionID     string // from -s flag in cmdline (tier 1)
