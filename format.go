@@ -68,6 +68,87 @@ func truncOrPad(s string, width int) string {
 	return s
 }
 
+// tickerSlice returns a scrolling window into text, subway-sign style.
+// if text fits within width, returned as-is (padded). otherwise the
+// visible window shifts by one character every rateMS milliseconds.
+func tickerSlice(text string, width, rateMS int) string {
+	if len(text) <= width {
+		return truncOrPad(text, width)
+	}
+	if rateMS <= 0 {
+		return truncOrPad(text, width)
+	}
+	gap := "   "
+	cycle := text + gap
+	cycleLen := len(cycle)
+	padded := strings.Repeat(cycle, (width/cycleLen)+2)
+	offset := int(time.Now().UnixMilli()/int64(rateMS)) % cycleLen
+	return padded[offset : offset+width]
+}
+
+// columnValue extracts the display string for a column key from a session.
+func columnValue(key string, cs correlatedSession) string {
+	nowMS := time.Now().UnixMilli()
+
+	if cs.session == nil {
+		switch key {
+		case "title":
+			return cs.process.cmdline
+		case "last":
+			return cs.process.cwd
+		case "status":
+			return "no-session"
+		case "pid":
+			return fmt.Sprintf("%d", cs.process.pid)
+		case "tty":
+			return cs.process.tty
+		case "cpu":
+			return fmt.Sprintf("%.1f%%", cs.process.cpuPercent)
+		case "mem":
+			return fmt.Sprintf("%.0fM", cs.process.memMB)
+		}
+		return ""
+	}
+
+	switch key {
+	case "title":
+		return cs.session.title
+	case "last":
+		return cs.session.lastOutput
+	case "status":
+		return inferStatus(cs.session, cs.process.cpuPercent)
+	case "msgs":
+		return fmt.Sprintf("%d", cs.session.messageCount)
+	case "sid":
+		return cs.session.sessionID
+	case "pid":
+		return fmt.Sprintf("%d", cs.process.pid)
+	case "uptime":
+		if cs.process.startTimeMS > 0 {
+			return formatDuration(nowMS - cs.process.startTimeMS)
+		}
+		return "-"
+	case "round":
+		if cs.session.roundStartTime > 0 {
+			return formatDuration(nowMS - cs.session.roundStartTime)
+		}
+		return "-"
+	case "cpu":
+		return fmt.Sprintf("%.1f%%", cs.process.cpuPercent)
+	case "mem":
+		return fmt.Sprintf("%.0fM", cs.process.memMB)
+	case "ctx":
+		return formatTokens(cs.session.totalInputTokens)
+	case "out":
+		return formatTokens(cs.session.totalOutputTokens)
+	case "model":
+		return shortModel(cs.session.model)
+	case "tty":
+		return cs.process.tty
+	}
+	return ""
+}
+
 // -- status inference --
 
 // inferStatus determines what a session is currently doing.

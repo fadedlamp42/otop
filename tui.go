@@ -30,6 +30,8 @@ type detailToggleMsg struct {
 	source string
 }
 
+type tickerTickMsg struct{}
+
 // -- model --
 
 type model struct {
@@ -62,6 +64,14 @@ type model struct {
 	detailSession *correlatedSession
 	detailSource  string // "tmux" or "db"
 
+	// view vs select mode
+	// view mode: no cursor highlight, just watching
+	// select mode: cursor visible, nav/enter/yank work
+	selectMode bool
+
+	// coloring mode (toggled with 'c', default from config)
+	opinionatedColor bool
+
 	// flash message (e.g. after yank)
 	flashMsg  string
 	flashTime time.Time
@@ -70,11 +80,26 @@ type model struct {
 }
 
 func newModel() model {
-	return model{}
+	sortIdx := 0
+	for i, col := range columns {
+		if col.key == display.defaultSortKey {
+			sortIdx = i
+			break
+		}
+	}
+	return model{
+		opinionatedColor: display.opinionatedColor,
+		sortColIdx:       sortIdx,
+		sortReverse:      display.defaultSortReverse,
+	}
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(fetchCmd, tickCmd())
+	cmds := []tea.Cmd{fetchCmd, tickCmd()}
+	if display.oneLine && display.ticker.rateMS > 0 {
+		cmds = append(cmds, tickerTickCmd())
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -116,6 +141,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.detailScroll = 0
 		}
 		return m, nil
+	case tickerTickMsg:
+		return m, tickerTickCmd()
 	}
 	return m, nil
 }
@@ -144,6 +171,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "p":
 		m.showAllProcesses = !m.showAllProcesses
 	case "y":
+		m.selectMode = true
 		visible := m.getVisibleSessions()
 		if m.cursor < len(visible) {
 			if s := visible[m.cursor].session; s != nil {
@@ -156,6 +184,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case "enter":
+		m.selectMode = true
 		visible := m.getVisibleSessions()
 		if m.cursor < len(visible) {
 			cs := visible[m.cursor]
@@ -170,16 +199,24 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.sortColIdx = (m.sortColIdx - 1 + len(columns)) % len(columns)
 	case "s":
 		m.sortReverse = !m.sortReverse
+	case "c":
+		m.opinionatedColor = !m.opinionatedColor
 	case "/":
 		m.filterActive = true
 		m.filterText = ""
 	case "esc":
-		m.filterText = ""
+		if m.filterText != "" {
+			m.filterText = ""
+		} else {
+			m.selectMode = false
+		}
 	case "j", "down":
+		m.selectMode = true
 		visible := m.getVisibleSessions()
 		maxIdx := max(0, len(visible)-1)
 		m.cursor = min(m.cursor+1, maxIdx)
 	case "k", "up":
+		m.selectMode = true
 		m.cursor = max(m.cursor-1, 0)
 	}
 
@@ -299,11 +336,12 @@ func (m model) getVisibleSessions() []correlatedSession {
 }
 
 func (m *model) adjustScroll() {
-	overhead := 7 // header + stats + 2 col headers + separator + detail + footer
-	if m.showTodos || m.showMCPs {
-		overhead += 8
+	overhead := m.listOverhead()
+	linesPerSession := 3
+	if display.oneLine {
+		linesPerSession = 1
 	}
-	pageSize := max(1, (m.height-overhead)/3)
+	pageSize := max(1, (m.height-overhead)/linesPerSession)
 	if m.cursor >= m.scrollOffset+pageSize {
 		m.scrollOffset = m.cursor - pageSize + 1
 	}
@@ -321,6 +359,12 @@ func fetchCmd() tea.Msg {
 func tickCmd() tea.Cmd {
 	return tea.Tick(refreshInterval, func(t time.Time) tea.Msg {
 		return tickMsg(t)
+	})
+}
+
+func tickerTickCmd() tea.Cmd {
+	return tea.Tick(time.Duration(display.ticker.rateMS)*time.Millisecond, func(t time.Time) tea.Msg {
+		return tickerTickMsg{}
 	})
 }
 

@@ -53,6 +53,28 @@ func statusStyleFor(status string) lipgloss.Style {
 	}
 }
 
+// stalenessStyleFor returns a staleness-gradient style based on last message age.
+// mirrors stop's approach: green (<1m) → yellow (<5m) → orange (<15m) → dark orange (<1h) → red (1h+).
+func stalenessStyleFor(lastMessageTimeMS int64) lipgloss.Style {
+	if lastMessageTimeMS <= 0 {
+		return staleStyle
+	}
+	age := time.Duration(time.Now().UnixMilli()-lastMessageTimeMS) * time.Millisecond
+	if age < time.Minute {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	}
+	if age < 5*time.Minute {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	}
+	if age < 15*time.Minute {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("208"))
+	}
+	if age < time.Hour {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("202"))
+	}
+	return lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+}
+
 // titleWidth computes the flexible TITLE/LAST column width.
 func (m model) titleWidth() int {
 	fixed := colGap + colStatus + colGap + colSID + colGap + colUp +
@@ -69,34 +91,52 @@ func (m model) renderListView() string {
 
 	var b strings.Builder
 
-	b.WriteString(m.renderHeader())
-	b.WriteString("\n")
-	b.WriteString(m.renderStatsBar())
-	b.WriteString("\n")
-	b.WriteString(m.renderColumnHeaders())
-	b.WriteString(dimStyle.Render(strings.Repeat("\u2500", m.width)))
-	b.WriteString("\n")
+	if display.showHeader {
+		b.WriteString(m.renderHeader())
+		b.WriteString("\n")
+	}
+	if display.showAggregateStats {
+		b.WriteString(m.renderStatsBar())
+		b.WriteString("\n")
+	}
+	if display.showColumnHeaders {
+		if display.oneLine {
+			b.WriteString(m.renderOneLineHeaders())
+		} else {
+			b.WriteString(m.renderColumnHeaders())
+		}
+		b.WriteString(dimStyle.Render(strings.Repeat("\u2500", m.width)))
+		b.WriteString("\n")
+	}
 
 	visible := m.getVisibleSessions()
 
-	overhead := 7
-	if m.showTodos || m.showMCPs {
-		overhead += 8
+	overhead := m.listOverhead()
+	linesPerSession := 3
+	if display.oneLine {
+		linesPerSession = 1
 	}
-	pageSize := max(1, (m.height-overhead)/3)
+	pageSize := max(1, (m.height-overhead)/linesPerSession)
 
 	end := min(m.scrollOffset+pageSize, len(visible))
 	for i := m.scrollOffset; i < end; i++ {
-		isSelected := i == m.cursor
+		isSelected := m.selectMode && i == m.cursor
 		cs := visible[i]
-		b.WriteString(m.renderSessionRow1(cs, isSelected))
-		b.WriteString("\n")
-		b.WriteString(m.renderSessionRow2(cs, isSelected))
-		b.WriteString("\n\n")
+		if display.oneLine {
+			b.WriteString(m.renderSessionOneLine(cs, isSelected))
+			b.WriteString("\n")
+		} else {
+			b.WriteString(m.renderSessionRow1(cs, isSelected))
+			b.WriteString("\n")
+			b.WriteString(m.renderSessionRow2(cs, isSelected))
+			b.WriteString("\n\n")
+		}
 	}
 
-	b.WriteString(m.renderDetailLine())
-	b.WriteString("\n")
+	if m.selectMode {
+		b.WriteString(m.renderDetailLine())
+		b.WriteString("\n")
+	}
 
 	if m.showTodos {
 		b.WriteString(m.renderTodosPanel())
@@ -253,7 +293,13 @@ func (m model) renderSessionRow1(cs correlatedSession, selected bool) string {
 	if selected {
 		return selectStyle.Width(m.width).MaxWidth(m.width).Render(text)
 	}
-	return statusStyleFor(status).Width(m.width).MaxWidth(m.width).Render(text)
+	var style lipgloss.Style
+	if m.opinionatedColor {
+		style = stalenessStyleFor(cs.session.lastMessageTime)
+	} else {
+		style = statusStyleFor(status)
+	}
+	return style.Width(m.width).MaxWidth(m.width).Render(text)
 }
 
 func (m model) renderSessionRow2(cs correlatedSession, selected bool) string {
@@ -291,6 +337,116 @@ func (m model) renderSessionRow2(cs correlatedSession, selected bool) string {
 		return selectStyle.Width(m.width).MaxWidth(m.width).Render(text)
 	}
 	return dimStyle.Width(m.width).MaxWidth(m.width).Render(text)
+}
+
+// -- one-line mode rendering --
+
+// listOverhead returns the number of non-session lines in the list view.
+func (m model) listOverhead() int {
+	lines := 1 // footer
+	if display.showHeader {
+		lines++
+	}
+	if display.showAggregateStats {
+		lines++
+	}
+	if display.showColumnHeaders {
+		if display.oneLine {
+			lines += 2 // header row + separator
+		} else {
+			lines += 3 // two header rows + separator
+		}
+	}
+	if m.selectMode {
+		lines++ // detail line
+	}
+	if m.showTodos || m.showMCPs {
+		lines += 8
+	}
+	return lines
+}
+
+// oneLineFlexWidth computes the width for flexible columns (width=0).
+// splits remaining space evenly among all flexible columns.
+func (m model) oneLineFlexWidth(cols []oneLineColSpec) int {
+	fixed := 2 // leading indent
+	flexCount := 0
+	for i, c := range cols {
+		if c.width > 0 {
+			fixed += c.width
+		} else {
+			flexCount++
+		}
+		if i > 0 {
+			fixed += colGap
+		}
+	}
+	if flexCount == 0 {
+		return 10
+	}
+	return max(5, (m.width-fixed)/flexCount)
+}
+
+func (m model) renderOneLineHeaders() string {
+	cols := enabledOneLineColumns()
+	if len(cols) == 0 {
+		return ""
+	}
+	activeKey := columns[m.sortColIdx].key
+	flexWidth := m.oneLineFlexWidth(cols)
+
+	var parts []string
+	for _, c := range cols {
+		w := c.width
+		if w == 0 {
+			w = flexWidth
+		}
+		text := truncOrPad(c.label, w)
+		if c.key == activeKey {
+			parts = append(parts, sortHiStyle.Render(text))
+		} else {
+			parts = append(parts, hdrDimBold.Render(text))
+		}
+	}
+	return "  " + strings.Join(parts, "  ") + "\n"
+}
+
+func (m model) renderSessionOneLine(cs correlatedSession, selected bool) string {
+	cols := enabledOneLineColumns()
+	if len(cols) == 0 {
+		return ""
+	}
+	flexWidth := m.oneLineFlexWidth(cols)
+
+	var parts []string
+	for _, c := range cols {
+		w := c.width
+		if w == 0 {
+			w = flexWidth
+		}
+		val := columnValue(c.key, cs)
+		if c.key == "last" && display.ticker.rateMS > 0 {
+			parts = append(parts, tickerSlice(val, w, display.ticker.rateMS))
+		} else {
+			parts = append(parts, truncOrPad(val, w))
+		}
+	}
+
+	text := "  " + strings.Join(parts, "  ")
+
+	if selected {
+		return selectStyle.Width(m.width).MaxWidth(m.width).Render(text)
+	}
+	if cs.session == nil {
+		return dimStyle.Width(m.width).MaxWidth(m.width).Render(text)
+	}
+	var style lipgloss.Style
+	if m.opinionatedColor {
+		style = stalenessStyleFor(cs.session.lastMessageTime)
+	} else {
+		style = statusStyleFor(inferStatus(cs.session, cs.process.cpuPercent))
+	}
+	return style.Width(m.width).MaxWidth(m.width).Render(text)
 }
 
 // -- detail line (cwd of selected) --
@@ -419,12 +575,13 @@ func (m model) renderFooter() string {
 		{">/<", "sort"},
 		{"s", "flip"},
 		{"/", "filter"},
-		{"esc", "clear"},
+		{"esc", "deselect"},
 		{"a", "sessions"},
 		{"p", "procs"},
 		{"t", "todos"},
 		{"m", "mcps"},
-		{"j/k", "scroll"},
+		{"c", "colors"},
+		{"j/k", "select"},
 	}
 
 	var parts []string
@@ -442,6 +599,17 @@ func (m model) renderFooter() string {
 		if barWidth+flashWidth < m.width {
 			pad := m.width - barWidth - flashWidth
 			return bar + strings.Repeat(" ", pad) + flashRendered
+		}
+	}
+
+	// subtle mode indicator, right-aligned
+	if m.selectMode {
+		indicator := dimStyle.Render("select")
+		barWidth := lipgloss.Width(bar)
+		indWidth := lipgloss.Width(indicator)
+		if barWidth+indWidth+2 < m.width {
+			pad := m.width - barWidth - indWidth
+			return bar + strings.Repeat(" ", pad) + indicator
 		}
 	}
 

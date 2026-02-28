@@ -95,3 +95,163 @@ const (
 	colModel  = 12 // "opus-4.6" / "sonnet-4.5"
 	colGap    = 2  // space between columns
 )
+
+// -- display configuration --
+// controls which sections and columns are visible.
+// two-line mode ignores the columns config and shows the full layout.
+// one-line mode uses the columns config to pick which columns appear.
+
+type displayConfig struct {
+	showHeader         bool
+	showAggregateStats bool
+	showColumnHeaders  bool
+	oneLine            bool
+	opinionatedColor   bool   // staleness-based coloring (stop-style) vs status-based
+	defaultSortKey     string // column key to sort by on startup (e.g. "round", "status")
+	defaultSortReverse bool   // true = descending, false = ascending
+	columns            columnConfig
+	ticker             tickerConfig
+}
+
+// columnConfig toggles individual columns in one-line mode.
+type columnConfig struct {
+	title  bool
+	last   bool
+	status bool
+	msgs   bool
+	sid    bool
+	pid    bool
+	uptime bool
+	round  bool
+	cpu    bool
+	mem    bool
+	ctx    bool
+	out    bool
+	model  bool
+	tty    bool
+}
+
+// tickerConfig controls the subway-style scrolling ticker for the "last" column.
+// width sets the fixed character count; rateMS controls scroll speed.
+// only applies in one-line mode when the "last" column is enabled.
+type tickerConfig struct {
+	width  int
+	rateMS int
+}
+
+// display is the active layout configuration.
+// edit these fields to customize the layout.
+// opinionatedColor: false = status-based coloring (green/yellow/white/dim/red),
+//
+//	true  = staleness-based coloring a la stop (green→yellow→orange→red by age).
+//	toggle at runtime with 'c' key.
+var display = displayConfig{
+	showHeader:         false,
+	showAggregateStats: false,
+	showColumnHeaders:  false,
+	oneLine:            true,
+	opinionatedColor:   true,
+	defaultSortKey:     "round",
+	defaultSortReverse: false, // ascending: fresh rounds at top
+	columns: columnConfig{
+		title:  true,
+		last:   true,
+		status: true,
+		round:  true,
+		model:  true,
+	},
+	ticker: tickerConfig{
+		width:  0, // 0 = flexible, fills remaining space. >0 = fixed character count.
+		rateMS: 300,
+	},
+}
+
+// -- full layout preset (uncomment to switch) --
+// var display = displayConfig{
+// 	showHeader:         true,
+// 	showAggregateStats: true,
+// 	showColumnHeaders:  true,
+// 	oneLine:            false,
+// 	columns: columnConfig{
+// 		title: true, last: true, status: true, msgs: true,
+// 		sid: true, pid: true, uptime: true, round: true,
+// 		cpu: true, mem: true, ctx: true, out: true,
+// 		model: true, tty: true,
+// 	},
+// 	ticker: tickerConfig{width: 0, rateMS: 300},
+// }
+
+func (c columnConfig) isEnabled(key string) bool {
+	switch key {
+	case "title":
+		return c.title
+	case "last":
+		return c.last
+	case "status":
+		return c.status
+	case "msgs":
+		return c.msgs
+	case "sid":
+		return c.sid
+	case "pid":
+		return c.pid
+	case "uptime":
+		return c.uptime
+	case "round":
+		return c.round
+	case "cpu":
+		return c.cpu
+	case "mem":
+		return c.mem
+	case "ctx":
+		return c.ctx
+	case "out":
+		return c.out
+	case "model":
+		return c.model
+	case "tty":
+		return c.tty
+	}
+	return false
+}
+
+// oneLineColSpec describes a column in one-line mode.
+type oneLineColSpec struct {
+	key   string
+	label string
+	width int // 0 = flexible, takes remaining space
+}
+
+// oneLineColumnOrder defines display order and base widths for one-line mode.
+var oneLineColumnOrder = []oneLineColSpec{
+	{"title", "TITLE", 0},
+	{"last", "LAST", 0},
+	{"status", "STATUS", 10},
+	{"msgs", "MSGS", 5},
+	{"sid", "SID", 30},
+	{"pid", "PID", 8},
+	{"uptime", "UP", 8},
+	{"round", "ROUND", 8},
+	{"cpu", "CPU", 6},
+	{"mem", "MEM", 6},
+	{"ctx", "CTX", 8},
+	{"out", "OUT", 8},
+	{"model", "MODEL", 12},
+	{"tty", "TTY", 12},
+}
+
+// enabledOneLineColumns returns the enabled columns with widths resolved.
+// the "last" column width comes from ticker.width when set.
+func enabledOneLineColumns() []oneLineColSpec {
+	var result []oneLineColSpec
+	for _, col := range oneLineColumnOrder {
+		if !display.columns.isEnabled(col.key) {
+			continue
+		}
+		if col.key == "last" && display.ticker.width > 0 {
+			col.width = display.ticker.width
+		}
+		result = append(result, col)
+	}
+	return result
+}
