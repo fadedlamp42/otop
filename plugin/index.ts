@@ -3,6 +3,8 @@
 //
 // writes the current session ID to ~/.local/share/opencode/otop/<PID>
 // and cleans up the file when the process exits.
+//
+// ses_34dda6ebdffev5A6J7sPKV6fVt
 
 import type { Plugin, Hooks } from "@opencode-ai/plugin"
 import { mkdirSync, writeFileSync, unlinkSync } from "fs"
