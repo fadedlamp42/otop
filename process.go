@@ -2,13 +2,15 @@
 //
 // finds running opencode processes via `ps`, then uses a single batched
 // `lsof` call to extract each process's cwd and open log file path.
-// the log filename encodes the process start time in UTC, which is used
-// for tier 2 PID-to-session correlation.
+// the log file is read to extract the definitive session ID (tier 1.5),
+// and the log filename encodes the process start time in UTC as a
+// fallback signal for heuristic correlation (tier 2).
 
 package main
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -18,6 +20,44 @@ import (
 )
 
 var sessionIDRe = regexp.MustCompile(`(?:^|\s)-s\s+(ses_\S+)`)
+
+// log file patterns for extracting the active session ID.
+// session creation: service=session id=ses_XXXX ... created
+// session resume: path=/session/ses_XXXX
+var logSessionCreatedRe = regexp.MustCompile(`service=session id=(ses_\S+)`)
+var logSessionPathRe = regexp.MustCompile(`path=/session/(ses_[A-Za-z0-9]+)`)
+
+// extractSessionFromLog reads the first 4KB of an opencode log file and
+// extracts the session ID. prefers the explicit "created" line, falls back
+// to the first API path reference. returns "" if nothing found.
+// NOTE: added in ses_34dda6ebdffev5A6J7sPKV6fVt to fix same-cwd correlation bug
+func extractSessionFromLog(logpath string) string {
+	if logpath == "" {
+		return ""
+	}
+	f, err := os.Open(logpath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	buf := make([]byte, 4096)
+	n, _ := f.Read(buf)
+	if n == 0 {
+		return ""
+	}
+	chunk := string(buf[:n])
+
+	// prefer the definitive "created" line
+	if m := logSessionCreatedRe.FindStringSubmatch(chunk); m != nil {
+		return m[1]
+	}
+	// fall back to first API path reference (session resume)
+	if m := logSessionPathRe.FindStringSubmatch(chunk); m != nil {
+		return m[1]
+	}
+	return ""
+}
 
 type tmuxPaneInfo struct {
 	session string
@@ -204,7 +244,12 @@ func getOpencodeProcesses() []processInfo {
 			sessionID = m[1]
 		}
 
-		// tier 2: start time from log filename (UTC)
+		// tier 1.5: extract session ID from log file (definitive)
+		if sessionID == "" && info.logpath != "" {
+			sessionID = extractSessionFromLog(info.logpath)
+		}
+
+		// start time from log filename (UTC), used as fallback signal
 		var startMS int64
 		if info.logpath != "" {
 			startMS = parseLogTimestamp(info.logpath)
