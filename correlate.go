@@ -1,60 +1,27 @@
-// PID-to-session correlation: the two-pass claimed-set algorithm.
+// PID-to-session correlation via the otop opencode plugin.
 //
-// pass 1: explicit -s flags claim sessions immediately.
-// pass 2: remaining processes sorted by start_time ascending, each
-//         claims the best unclaimed session from its candidates.
+// session IDs come from PID files written by the plugin. processes
+// without a PID file show as unmatched (no heuristic fallback).
 //
 // also contains fetchAll() which runs all data collection concurrently.
 
 package main
 
 import (
-	"sort"
 	"sync"
 )
 
-// correlateAllSessions runs the full two-pass PID-to-session algorithm.
-// returns the raw process list and the correlated (process, session) pairs.
+// correlateAllSessions pairs each opencode process with its session.
+// session IDs are set on processInfo by readSessionFromPidFile during
+// process discovery; this function just looks up the session data from the db.
 func correlateAllSessions() ([]processInfo, []correlatedSession) {
 	processes := getOpencodeProcesses()
 
-	claimed := make(map[string]bool)
-	resolved := make(map[int]string) // pid → session_id
-
-	// pass 1: explicit session IDs from cmdline -s flag
-	for _, proc := range processes {
-		if proc.sessionID != "" && !proc.isToolProcess {
-			claimed[proc.sessionID] = true
-			resolved[proc.pid] = proc.sessionID
-		}
-	}
-
-	// pass 2: inferred matches, oldest process first.
-	// older processes have accumulated more messages and get priority.
-	var remaining []processInfo
-	for _, p := range processes {
-		if _, ok := resolved[p.pid]; !ok && !p.isToolProcess {
-			remaining = append(remaining, p)
-		}
-	}
-	sort.Slice(remaining, func(i, j int) bool {
-		return remaining[i].startTimeMS < remaining[j].startTimeMS
-	})
-	for _, proc := range remaining {
-		sid := findSessionForProcess(proc, claimed)
-		if sid != "" {
-			claimed[sid] = true
-			resolved[proc.pid] = sid
-		}
-	}
-
-	// build final pairs preserving original process order
 	var correlated []correlatedSession
 	for _, proc := range processes {
-		sid := resolved[proc.pid]
 		var session *sessionInfo
-		if sid != "" {
-			session = getSessionInfo(sid)
+		if proc.sessionID != "" && !proc.isToolProcess {
+			session = getSessionInfo(proc.sessionID)
 		}
 		correlated = append(correlated, correlatedSession{
 			process: proc,

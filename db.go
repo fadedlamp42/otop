@@ -204,69 +204,6 @@ func reverseLines(text string) []string {
 	return lines
 }
 
-// findSessionForProcess correlates a process to its most likely session.
-// tier 2: match by cwd + message activity since process start time.
-// tier 3: fallback to most recently updated session for the cwd.
-func findSessionForProcess(proc processInfo, claimed map[string]bool) string {
-	if proc.sessionID != "" {
-		return proc.sessionID
-	}
-	if proc.cwd == "" || proc.cwd == "?" {
-		return ""
-	}
-
-	db, err := openDB()
-	if err != nil {
-		return ""
-	}
-	defer db.Close()
-
-	// tier 2: message-activity-since-start correlation
-	if proc.startTimeMS > 0 {
-		rows, err := db.Query(`
-			SELECT s.id, count(m.id) as msgs_since
-			FROM session s
-			JOIN message m ON m.session_id = s.id
-			WHERE s.directory = ?
-			  AND m.time_created >= ?
-			GROUP BY s.id
-			ORDER BY msgs_since DESC
-			LIMIT 5
-		`, proc.cwd, proc.startTimeMS)
-		if err == nil {
-			for rows.Next() {
-				var id string
-				var count int
-				if rows.Scan(&id, &count) == nil && !claimed[id] {
-					rows.Close()
-					return id
-				}
-			}
-			rows.Close()
-		}
-	}
-
-	// tier 3: most recently updated session for this directory
-	rows, err := db.Query(`
-		SELECT id FROM session
-		WHERE directory = ?
-		ORDER BY time_updated DESC
-		LIMIT 5
-	`, proc.cwd)
-	if err != nil {
-		return ""
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id string
-		if rows.Scan(&id) == nil && !claimed[id] {
-			return id
-		}
-	}
-
-	return ""
-}
-
 // queryTodayStats fetches aggregate stats for sessions active today.
 func queryTodayStats() aggStats {
 	db, err := openDB()

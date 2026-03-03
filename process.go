@@ -1,10 +1,11 @@
 // process discovery: ps + lsof queries for finding opencode instances.
 //
-// finds running opencode processes via `ps`, then uses a single batched
-// `lsof` call to extract each process's cwd and open log file path.
-// the log file is read to extract the definitive session ID (tier 1.5),
-// and the log filename encodes the process start time in UTC as a
-// fallback signal for heuristic correlation (tier 2).
+// session ID comes exclusively from PID files written by the otop opencode
+// plugin at ~/.local/share/opencode/otop/<PID>. the plugin listens to
+// session events and writes the active session ID on every change.
+//
+// lsof is still used for cwd (display) and log filename (uptime calculation).
+// install the plugin: ~/.config/opencode/plugins/otop.ts
 
 package main
 
@@ -19,42 +20,28 @@ import (
 	"time"
 )
 
-var sessionIDRe = regexp.MustCompile(`(?:^|\s)-s\s+(ses_\S+)`)
-
-// log file patterns for extracting the active session ID.
-// session creation: service=session id=ses_XXXX ... created
-// session resume: path=/session/ses_XXXX
-var logSessionCreatedRe = regexp.MustCompile(`service=session id=(ses_\S+)`)
-var logSessionPathRe = regexp.MustCompile(`path=/session/(ses_[A-Za-z0-9]+)`)
-
-// extractSessionFromLog reads the first 4KB of an opencode log file and
-// extracts the session ID. prefers the explicit "created" line, falls back
-// to the first API path reference. returns "" if nothing found.
+// otopPidDir is where the otop opencode plugin writes PID-to-session mappings.
+// each file is named by PID and contains the active session ID.
 // NOTE: added in ses_34dda6ebdffev5A6J7sPKV6fVt to fix same-cwd correlation bug
-func extractSessionFromLog(logpath string) string {
-	if logpath == "" {
-		return ""
+func otopPidDir() string {
+	dataHome := os.Getenv("XDG_DATA_HOME")
+	if dataHome == "" {
+		home, _ := os.UserHomeDir()
+		dataHome = filepath.Join(home, ".local", "share")
 	}
-	f, err := os.Open(logpath)
+	return filepath.Join(dataHome, "opencode", "otop")
+}
+
+// readSessionFromPidFile reads the session ID written by the otop plugin
+// for a given opencode PID. returns "" if not found.
+func readSessionFromPidFile(pid int) string {
+	data, err := os.ReadFile(filepath.Join(otopPidDir(), strconv.Itoa(pid)))
 	if err != nil {
 		return ""
 	}
-	defer f.Close()
-
-	buf := make([]byte, 4096)
-	n, _ := f.Read(buf)
-	if n == 0 {
-		return ""
-	}
-	chunk := string(buf[:n])
-
-	// prefer the definitive "created" line
-	if m := logSessionCreatedRe.FindStringSubmatch(chunk); m != nil {
-		return m[1]
-	}
-	// fall back to first API path reference (session resume)
-	if m := logSessionPathRe.FindStringSubmatch(chunk); m != nil {
-		return m[1]
+	sid := strings.TrimSpace(string(data))
+	if strings.HasPrefix(sid, "ses_") {
+		return sid
 	}
 	return ""
 }
@@ -238,18 +225,10 @@ func getOpencodeProcesses() []processInfo {
 	for _, r := range raw {
 		info := lsofResults[r.pid]
 
-		// tier 1: parse -s flag from cmdline
-		var sessionID string
-		if m := sessionIDRe.FindStringSubmatch(r.args); m != nil {
-			sessionID = m[1]
-		}
+		// session ID from otop plugin PID file (sole source of truth)
+		sessionID := readSessionFromPidFile(r.pid)
 
-		// tier 1.5: extract session ID from log file (definitive)
-		if sessionID == "" && info.logpath != "" {
-			sessionID = extractSessionFromLog(info.logpath)
-		}
-
-		// start time from log filename (UTC), used as fallback signal
+		// start time from log filename (UTC), used for uptime display
 		var startMS int64
 		if info.logpath != "" {
 			startMS = parseLogTimestamp(info.logpath)

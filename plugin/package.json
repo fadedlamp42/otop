@@ -1,0 +1,31 @@
+{
+  "name": "opencode-otop",
+  "version": "0.1.1",
+  "description": "OpenCode plugin for otop — writes PID-to-session mapping files so otop can reliably correlate opencode processes to their sessions",
+  "keywords": [
+    "opencode",
+    "plugin",
+    "otop",
+    "process-monitor",
+    "session-tracking"
+  ],
+  "homepage": "https://github.com/fadedlamp42/otop#opencode-plugin",
+  "bugs": {
+    "url": "https://github.com/fadedlamp42/otop/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fadedlamp42/otop.git",
+    "directory": "plugin"
+  },
+  "license": "MIT",
+  "author": "fadedlamp42",
+  "type": "module",
+  "main": "index.ts",
+  "files": [
+    "index.ts"
+  ],
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.0.0"
+  }
+}

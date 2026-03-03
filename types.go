@@ -17,8 +17,8 @@ type processInfo struct {
 	tmuxWindow    string // tmux window name
 	cwd           string
 	cmdline       string
-	sessionID     string // from -s flag in cmdline (tier 1)
-	startTimeMS   int64  // from log filename via lsof (tier 2)
+	sessionID     string // from otop plugin PID file
+	startTimeMS   int64  // from log filename via lsof (uptime display)
 	isToolProcess bool   // true for `opencode run` (LSPs, wrappers)
 }
 
