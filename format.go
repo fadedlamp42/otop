@@ -177,6 +177,12 @@ func inferStatus(session *sessionInfo, cpuPercent float64) string {
 	if session == nil {
 		return "unknown"
 	}
+
+	// a running "question" tool means the session is waiting for user input
+	if session.pendingTool == "question" {
+		return "asking"
+	}
+
 	nowMS := time.Now().UnixMilli()
 	ageSeconds := float64(9999)
 	if session.lastMessageTime > 0 {

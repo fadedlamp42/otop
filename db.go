@@ -171,6 +171,22 @@ func getSessionInfo(sessionID string) *sessionInfo {
 		}
 	}
 
+	// pending tool: most recent tool part with status=running
+	// used to detect "asking" state (mcp_question tool waiting for input)
+	var pendingToolName sql.NullString
+	_ = db.QueryRow(`
+		SELECT json_extract(data, '$.tool')
+		FROM part
+		WHERE session_id = ?
+		  AND json_extract(data, '$.type') = 'tool'
+		  AND json_extract(data, '$.state.status') = 'running'
+		ORDER BY time_created DESC
+		LIMIT 1
+	`, sessionID).Scan(&pendingToolName)
+	if pendingToolName.Valid {
+		session.pendingTool = pendingToolName.String
+	}
+
 	// todos for the 't' panel
 	todoRows, err := db.Query(`
 		SELECT content, status, priority

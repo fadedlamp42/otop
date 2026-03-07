@@ -44,7 +44,8 @@ type sessionInfo struct {
 	lastOutput        string
 	activeTodos       []todoItem
 	version           string
-	interactive       bool // false when permission is not null
+	interactive       bool   // false when permission is not null
+	pendingTool       string // name of currently-running tool (from part table), empty if none
 }
 
 // todoItem represents a single todo from a session's todo list.

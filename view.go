@@ -25,11 +25,12 @@ var (
 	helpStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 
 	// status colors
-	activeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))  // green
-	transStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))  // yellow
-	idleStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("15")) // bright white
-	errorStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))  // red
-	staleStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))  // dim
+	activeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))   // green
+	askingStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("208")) // orange - needs user input
+	transStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))   // yellow
+	idleStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))  // bright white
+	errorStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))   // red
+	staleStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))   // dim
 
 	// selection + sort highlighting
 	selectStyle = lipgloss.NewStyle().Background(lipgloss.Color("6")).Foreground(lipgloss.Color("0"))
@@ -42,6 +43,8 @@ func statusStyleFor(status string) lipgloss.Style {
 	switch status {
 	case "generating", "tool use", "busy":
 		return activeStyle
+	case "asking":
+		return askingStyle
 	case "thinking", "queued":
 		return transStyle
 	case "idle":
