@@ -10,6 +10,7 @@ import (
 )
 
 const refreshInterval = 2 * time.Second
+const defaultServePort = 8384
 
 // dbPath returns the path to opencode's sqlite database.
 // respects XDG_DATA_HOME.
@@ -112,6 +113,7 @@ type displayConfig struct {
 	defaultSortReverse bool   // true = descending, false = ascending
 	columns            columnConfig
 	ticker             tickerConfig
+	bar                barConfig
 }
 
 // columnConfig toggles individual columns in one-line mode.
@@ -132,6 +134,12 @@ type columnConfig struct {
 	tty     bool
 	tmux    bool
 	tmuxWin bool
+}
+
+// barConfig controls the SwiftBar menu bar output (otop bar-status).
+type barConfig struct {
+	showIcon bool   // show SF Symbol icon in menu bar title
+	icon     string // SF Symbol name (e.g. "cpu", "terminal.fill")
 }
 
 // tickerConfig controls the subway-style scrolling ticker for the "last" column.
@@ -163,6 +171,10 @@ var display = displayConfig{
 	ticker: tickerConfig{
 		width:  0, // 0 = flexible, fills remaining space. >0 = fixed character count.
 		rateMS: 300,
+	},
+	bar: barConfig{
+		showIcon: false,
+		icon:     "cpu",
 	},
 }
 

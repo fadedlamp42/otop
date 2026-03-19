@@ -28,11 +28,21 @@ func main() {
 		return
 	}
 
+	// `otop bar-status` subcommand — SwiftBar menu bar output
+	if len(os.Args) > 1 && os.Args[1] == "bar-status" {
+		fs := flag.NewFlagSet("bar-status", flag.ExitOnError)
+		port := fs.Int("port", defaultServePort, "otop serve port to connect to")
+		fs.IntVar(port, "p", defaultServePort, "otop serve port to connect to")
+		_ = fs.Parse(os.Args[2:])
+		barStatusCommand(*port)
+		return
+	}
+
 	// `otop serve` subcommand — HTTP JSON server for Rose companion app
 	if len(os.Args) > 1 && os.Args[1] == "serve" {
 		fs := flag.NewFlagSet("serve", flag.ExitOnError)
-		port := fs.Int("port", 8384, "port to listen on")
-		fs.IntVar(port, "p", 8384, "port to listen on")
+		port := fs.Int("port", defaultServePort, "port to listen on")
+		fs.IntVar(port, "p", defaultServePort, "port to listen on")
 		_ = fs.Parse(os.Args[2:])
 
 		if _, err := os.Stat(dbPath()); os.IsNotExist(err) {
