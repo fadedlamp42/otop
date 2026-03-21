@@ -73,9 +73,11 @@ reads from opencode's sqlite db read-only (WAL mode, safe to query while session
 
 `ses_376f0394bffeMw00t9awVuAbEp` - publishing and latest changes
 `ses_367b7fb8cffeLWmyGNDY3ltaVi` - `go` rewrite
+`ses_2fb35dfc7ffeB5zQP9uKo6t1L2` - bar status
 
 ## todo
 
+- [ ] improve first-time experience of bar status (`ses_2fb35dfc7ffeB5zQP9uKo6t1L2`) via `brew` and perhaps `pm2` service responsible for installing and starting SwiftBar
 - [ ] record a `vhs` demo gif — scroll through sessions, enter detail view, filter, back out. embed in README above the install section
 - [ ] _stable_ Linux support (it kinda just works already lol)
   - [ ] replace `lsof` cwd resolution with `/proc/<pid>/cwd` symlink readlink
