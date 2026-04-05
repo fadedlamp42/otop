@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -31,9 +32,31 @@ func serveCommand(port int) {
 // includes all fields the phone needs: process info, session state,
 // last output, tokens, todos, and timestamps for freshness calculation.
 func handleSessions(w http.ResponseWriter, r *http.Request) {
-	_, correlated := correlateAllSessions()
-	todayStats := queryTodayStats()
-	globalStats := queryGlobalStats()
+	var (
+		correlated  []correlatedSession
+		todayStats  aggStats
+		globalStats aggStats
+		wg          sync.WaitGroup
+	)
+
+	wg.Add(3)
+
+	go func() {
+		defer wg.Done()
+		_, correlated = correlateAllSessions()
+	}()
+
+	go func() {
+		defer wg.Done()
+		todayStats = queryTodayStats()
+	}()
+
+	go func() {
+		defer wg.Done()
+		globalStats = queryGlobalStats()
+	}()
+
+	wg.Wait()
 	nowMS := time.Now().UnixMilli()
 
 	var sessions []map[string]any

@@ -10,9 +10,20 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
+)
+
+// global stats cache: expensive full-table scan that barely changes between polls.
+// cached for 30 seconds — the tray polls every few seconds, no need to re-scan
+// 76k+ messages with json_extract on every request.
+var (
+	globalStatsCache    aggStats
+	globalStatsCachedAt time.Time
+	globalStatsMu       sync.Mutex
+	globalStatsTTL      = 30 * time.Second
 )
 
 // openDB opens a read-only connection to the opencode sqlite database.
@@ -260,8 +271,26 @@ func queryTodayStats() aggStats {
 	}
 }
 
-// queryGlobalStats fetches aggregate stats across all sessions.
+// queryGlobalStats returns cached aggregate stats across all sessions.
+// the underlying query scans all 76k+ messages with json_extract, taking ~1.6s.
+// results are cached for 30 seconds since historical totals barely change.
 func queryGlobalStats() aggStats {
+	globalStatsMu.Lock()
+	defer globalStatsMu.Unlock()
+
+	if time.Since(globalStatsCachedAt) < globalStatsTTL {
+		return globalStatsCache
+	}
+
+	result := queryGlobalStatsUncached()
+	globalStatsCache = result
+	globalStatsCachedAt = time.Now()
+	return result
+}
+
+// queryGlobalStatsUncached runs the actual expensive full-table scan.
+// caller must hold globalStatsMu.
+func queryGlobalStatsUncached() aggStats {
 	db, err := openDB()
 	if err != nil {
 		return aggStats{}
