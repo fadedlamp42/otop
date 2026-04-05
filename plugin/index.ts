@@ -58,25 +58,40 @@ function extractSessionID(event: { type: string; properties: any }): string | un
 }
 
 export const OtopPlugin: Plugin = async (input) => {
-  // fire-and-forget: try to resolve the session eagerly so the PID
-  // file exists before the first message, but don't block plugin init
-  const eagerResolve = async () => {
-    try {
-      const response = await input.client.session.list()
-      const sessions = response.data
-      if (sessions && sessions.length > 0) {
-        const latestSession = sessions[sessions.length - 1]
-        writePidFile(latestSession.id)
-      }
-    } catch {}
+  let resolved = false
+
+  // check process.argv for an explicit `-s` session ID first.
+  // when resuming a session (`c -s ses_XXX`), the ID is right there.
+  const flagIndex = process.argv.indexOf("-s")
+  if (flagIndex !== -1 && process.argv[flagIndex + 1]) {
+    writePidFile(process.argv[flagIndex + 1])
+    resolved = true
   }
-  eagerResolve()
+
+  // for new sessions (no `-s`), eagerly try to resolve via session.list().
+  // only writes if no event has resolved first, avoiding the race where
+  // eagerResolve() overwrites a correct event-based value.
+  if (!resolved) {
+    const eagerResolve = async () => {
+      try {
+        if (resolved) return
+        const response = await input.client.session.list()
+        const sessions = response.data
+        if (!resolved && sessions && sessions.length > 0) {
+          const latestSession = sessions[sessions.length - 1]
+          writePidFile(latestSession.id)
+        }
+      } catch {}
+    }
+    eagerResolve()
+  }
 
   return {
     event: async ({ event }) => {
       const sessionID = extractSessionID(event)
       if (sessionID) {
         writePidFile(sessionID)
+        resolved = true
       }
     },
   } as Hooks

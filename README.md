@@ -61,6 +61,28 @@ when multiple processes share the same cwd, a two-pass claimed-set algorithm ens
 
 status is inferred from the db's `finish` field on assistant messages, cross-referenced with CPU usage from `ps` as a secondary signal (catches mid-stream responses that haven't been flushed to the db yet).
 
+## menu bar (SwiftBar)
+
+otop has a `bar-status` subcommand that outputs SwiftBar-formatted text, showing session counts by status (e.g. `G3 I12`) in the macOS menu bar. setup is in `bar.go`.
+
+run via pm2: `pm2 start ecosystem.config.cjs` starts `otop serve` on `:8390`, then the SwiftBar plugin (`~/Library/SwiftBar/otop-bar.3s.sh`) calls `otop bar-status -p 8390` every 3 seconds.
+
+### troubleshooting: SwiftBar menu item invisible (`ses_2a415f107ffeDRb8kJLfSOQDc3`)
+
+SwiftBar has a known bug ([#442](https://github.com/swiftbar/SwiftBar/issues/442), milestone 2.1.0) where it creates a **directory** instead of a file when syncing plugins to its internal folder. this silently hides the menu bar item — the process runs fine but nothing appears.
+
+symptoms: SwiftBar running in Activity Monitor, `defaults read com.ameba.SwiftBar` shows `"NSStatusItem Visible otop-bar.3s.sh" = 0`, and the app keeps resetting it to 0 on launch.
+
+fix:
+```bash
+killall SwiftBar
+rm -rf ~/Library/Application\ Support/SwiftBar/Plugins/otop-bar.3s.sh
+defaults delete com.ameba.SwiftBar
+killall cfprefsd
+open /Applications/SwiftBar.app
+# pick ~/Library/SwiftBar as the plugin folder when prompted
+```
+
 ## platform
 
 macOS only right now — i use this daily on mac and that's where it's tested. the process discovery layer (`lsof`, `ps` output parsing, cwd resolution) is all macOS-flavored. linux support is on the horizon, mostly just needs `/proc/<pid>/cwd` and `/proc/<pid>/fd/` instead of `lsof` :]
