@@ -6,9 +6,12 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os/exec"
+	"strings"
 	"sync"
 	"time"
 )
@@ -16,6 +19,7 @@ import (
 // serveCommand starts an HTTP server that exposes session data as JSON.
 func serveCommand(port int) {
 	http.HandleFunc("/sessions", handleSessions)
+	http.HandleFunc("/sessions/", handleSessionAction)
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
@@ -134,4 +138,56 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(response)
+}
+
+// handleSessionAction routes sub-resource actions on /sessions/<id>/<action>.
+// currently supports: POST /sessions/<id>/fork
+func handleSessionAction(w http.ResponseWriter, r *http.Request) {
+	// path: /sessions/<id>/fork
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) != 3 || parts[0] != "sessions" || parts[2] != "fork" {
+		http.NotFound(w, r)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	sessionID := parts[1]
+	if sessionID == "" {
+		http.Error(w, "missing session id", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "opencode", "run", "--fork", "-s", sessionID, "--format", "json", "(forked)")
+	output, err := cmd.Output()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("fork failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// parse stdout JSON lines for the sessionID field
+	var newSessionID string
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(line), &obj); err != nil {
+			continue
+		}
+		if id, ok := obj["sessionID"].(string); ok && id != "" {
+			newSessionID = id
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(map[string]string{"session_id": newSessionID})
 }
