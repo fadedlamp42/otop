@@ -115,6 +115,26 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 			entry["todos"] = todos
 		}
 
+		// include DCP plugin state if the plugin has persisted data for this session.
+		// absent key = no DCP data on disk; present key = live plugin activity to surface.
+		if dcp := readDcpState(cs.session.sessionID); dcp != nil {
+			dcpEntry := map[string]any{
+				"total_prune_tokens": dcp.totalPruneTokens,
+				"prune_block_count":  dcp.pruneBlockCount,
+				"last_updated_ms":    dcp.lastUpdatedMS,
+			}
+			if dcp.manualMode != nil {
+				dcpEntry["manual_mode"] = *dcp.manualMode
+			}
+			if dcp.lastPruneTopic != "" {
+				dcpEntry["last_prune_topic"] = dcp.lastPruneTopic
+			}
+			if dcp.compressPermission != "" {
+				dcpEntry["compress_permission"] = dcp.compressPermission
+			}
+			entry["dcp"] = dcpEntry
+		}
+
 		sessions = append(sessions, entry)
 	}
 
