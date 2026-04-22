@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const refreshInterval = 2 * time.Second
+const refreshInterval = 10 * time.Second
 const defaultServePort = 8384
 
 // dbPath returns the path to opencode's sqlite database.
