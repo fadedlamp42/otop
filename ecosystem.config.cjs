@@ -5,7 +5,7 @@ module.exports = {
   apps: [
     {
       name: "otop-serve",
-      script: "./otop",
+      script: "otop",
       args: "serve -p 8390",
       cwd: __dirname,
       interpreter: "none",
