@@ -99,6 +99,7 @@ reads from opencode's sqlite db read-only (WAL mode, safe to query while session
 
 ## todo
 
+- [ ] fix `tmux` pane scroll false generating positive (i.e. wiggling the TUI scroll buffer convinces the logic that generation is happening, somehow); hopefully `opencode.db` exposes something more reliable for in-progress generations
 - [ ] improve first-time experience of bar status (`ses_2fb35dfc7ffeB5zQP9uKo6t1L2`) via `brew` and perhaps `pm2` service responsible for installing and starting SwiftBar
 - [ ] record a `vhs` demo gif — scroll through sessions, enter detail view, filter, back out. embed in README above the install section
 - [ ] _stable_ Linux support (it kinda just works already lol)
