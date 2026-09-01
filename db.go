@@ -26,13 +26,52 @@ var (
 	globalStatsTTL      = 30 * time.Second
 )
 
-// openDB opens a read-only connection to the opencode sqlite database.
+// shared read-only handle to the opencode sqlite database.
+// opened lazily on first use and kept for the lifetime of the process.
+var (
+	sharedDB   *sql.DB
+	sharedDBMu sync.Mutex
+)
+
+// openDB returns the process-wide read-only handle to the opencode database,
+// opening it on first call. callers must NOT close what they get back.
+//
+// a *sql.DB is a connection pool, not a connection — it is safe for concurrent
+// use and is meant to be opened once per process. `serve` mode previously
+// opened one per query, which leaked roughly 32 GB of resident + swapped memory
+// over six days: modernc's pure-Go sqlite driver mmaps allocator arenas that it
+// never hands back to the OS, and each /sessions poll opened one database per
+// opencode process plus two for stats.
+//
+// failures are deliberately not memoized so a missing database (otop started
+// before opencode ever ran) recovers on a later poll instead of poisoning the
+// process forever.
 func openDB() (*sql.DB, error) {
+	sharedDBMu.Lock()
+	defer sharedDBMu.Unlock()
+
+	if sharedDB != nil {
+		return sharedDB, nil
+	}
+
 	path := dbPath()
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil, err
 	}
-	return sql.Open("sqlite", "file:"+path+"?mode=ro")
+
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	if err != nil {
+		return nil, err
+	}
+
+	// bound the pool so the driver's per-connection arenas stay flat.
+	// peak concurrency is the three parallel goroutines in handleSessions,
+	// and no query nests inside another, so four connections cannot deadlock.
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(4)
+
+	sharedDB = db
+	return sharedDB, nil
 }
 
 // getSessionInfo fetches full session data including message aggregates.
@@ -42,7 +81,6 @@ func getSessionInfo(sessionID string) *sessionInfo {
 	if err != nil {
 		return nil
 	}
-	defer db.Close()
 
 	var (
 		sid, title, directory, projectID, version sql.NullString
@@ -237,7 +275,6 @@ func queryTodayStats() aggStats {
 	if err != nil {
 		return aggStats{}
 	}
-	defer db.Close()
 
 	today := time.Now().Truncate(24 * time.Hour)
 	todayMS := today.UnixMilli()
@@ -295,7 +332,6 @@ func queryGlobalStatsUncached() aggStats {
 	if err != nil {
 		return aggStats{}
 	}
-	defer db.Close()
 
 	var sessionCount, messageCount sql.NullInt64
 	var totalIn, totalOut sql.NullInt64
@@ -348,7 +384,6 @@ func getRecentMessages(sessionID string, limit int) []messageDetail {
 	if err != nil {
 		return nil
 	}
-	defer db.Close()
 
 	rows, err := db.Query(`
 		SELECT data, time_created
